@@ -13,6 +13,16 @@ This is the hosted demo you submit to the hackathon.
 import os
 import streamlit as st
 
+# On Streamlit Community Cloud, secrets live in st.secrets (not os.environ).
+# Bridge them into the environment BEFORE importing the engine, which reads
+# os.environ. Locally (no secrets file) this is a harmless no-op.
+try:
+    for _k in ("NEBIUS_API_KEY", "NEBIUS_BASE_URL", "NEBIUS_MODEL", "TAVILY_API_KEY"):
+        if _k in st.secrets and not os.environ.get(_k):
+            os.environ[_k] = str(st.secrets[_k])
+except Exception:
+    pass  # no secrets.toml locally — rely on real environment variables
+
 import scholarscout as ss
 
 st.set_page_config(page_title="ScholarScout", page_icon="🔭", layout="centered")
