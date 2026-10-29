@@ -165,7 +165,7 @@ def search_web(tavily, queries, max_results_per_query=4):
 # ------------------------------------------------------------------------------
 # STEP 3 — Nemotron reads the sources and writes the judged, grouped digest.
 # ------------------------------------------------------------------------------
-def write_digest(client, research_field, sources):
+def write_digest(client, research_field, sources, horizon_days=45):
     sources_block = "\n\n".join(
         f"[{i+1}] {s['title']}\nURL: {s['url']}\n{s['content']}"
         for i, s in enumerate(sources)
@@ -175,10 +175,14 @@ def write_digest(client, research_field, sources):
         f"You are a rigorous research-opportunity analyst. Today is {TODAY}. "
         "From the provided web sources, produce a SKIMMABLE markdown digest for the "
         "researcher. Group as:\n"
-        "## ⏰ Urgent (deadline within ~45 days)\n"
+        f"## ⏰ Urgent (deadline within the next {horizon_days} days)\n"
         "## 1. Open now (rolling / no fixed deadline)\n"
-        "## 2. Upcoming deadlines (next ~4 months)\n"
+        f"## 2. Upcoming deadlines (after {horizon_days} days, next ~4 months)\n"
         "## 3. Best early / accessible targets\n\n"
+        f"The researcher is focused on a {horizon_days}-DAY window: put EVERY venue "
+        f"whose deadline falls within the next {horizon_days} days from today "
+        f"({TODAY}) in the '⏰ Urgent' section, and sort that section by soonest "
+        "deadline first. "
         f"For each venue give: name (bold), deadline + days left (compute days left "
         f"from today, {TODAY}), cost (FREE vs APC ~$), a one-line reputability "
         "judgement, and a clickable markdown link. "
@@ -190,15 +194,20 @@ def write_digest(client, research_field, sources):
         "'(unverified)'. End with a 2-3 line suggested submission plan. Be concise "
         "and use real links from the sources."
     )
-    user = f"Research field: {research_field}\n\nSOURCES:\n{sources_block}"
+    user = (
+        f"Research field: {research_field}\n"
+        f"Deadline focus window: next {horizon_days} days\n\n"
+        f"SOURCES:\n{sources_block}"
+    )
     return _chat(client, system, user, temperature=0.3, max_tokens=4000)
 
 
 # ------------------------------------------------------------------------------
 # The full pipeline: field -> queries -> search -> digest.
 # ------------------------------------------------------------------------------
-def scout(research_field, n_queries=5, progress=None):
-    """Run the whole agent. `progress` is an optional callback(str) for UI logs."""
+def scout(research_field, n_queries=5, horizon_days=45, progress=None):
+    """Run the whole agent. `progress` is an optional callback(str) for UI logs.
+    `horizon_days` sets the 'Urgent' deadline window (e.g. 30 / 45 / 60)."""
     def log(msg):
         if progress:
             progress(msg)
@@ -217,8 +226,8 @@ def scout(research_field, n_queries=5, progress=None):
     else:
         log("No Tavily key found — running in model-only mode (no live search).")
 
-    log("Nemotron is judging venues and writing the digest…")
-    digest = write_digest(client, research_field, sources)
+    log(f"Nemotron is judging venues and writing the digest (next {horizon_days} days)…")
+    digest = write_digest(client, research_field, sources, horizon_days=horizon_days)
 
     return ScoutResult(
         field=research_field,
@@ -236,9 +245,19 @@ def scout(research_field, n_queries=5, progress=None):
 if __name__ == "__main__":
     import sys
 
-    field_arg = " ".join(sys.argv[1:]) or "probabilistic computing, p-bits, Ising machines, QUBO"
-    print(f"\nScholarScout — scouting opportunities for: {field_arg}\n" + "=" * 70)
-    result = scout(field_arg, progress=lambda m: print(f"  … {m}"))
+    # Optional: --days 30|45|60 sets the Urgent window; rest of args = the field.
+    horizon = 45
+    args = sys.argv[1:]
+    if "--days" in args:
+        i = args.index("--days")
+        try:
+            horizon = int(args[i + 1])
+            del args[i : i + 2]
+        except (IndexError, ValueError):
+            pass
+    field_arg = " ".join(args) or "probabilistic computing, p-bits, Ising machines, QUBO"
+    print(f"\nScholarScout — scouting opportunities for: {field_arg} (next {horizon} days)\n" + "=" * 70)
+    result = scout(field_arg, horizon_days=horizon, progress=lambda m: print(f"  … {m}"))
     print("\n" + "=" * 70)
     print(f"Model: {result.model}  |  Tavily used: {result.used_tavily}  |  "
           f"Sources: {len(result.sources)}")

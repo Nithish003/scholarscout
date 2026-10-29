@@ -45,6 +45,13 @@ with st.sidebar:
     st.write("**Nebius key:**", "✅ set" if os.environ.get("NEBIUS_API_KEY") else "❌ missing")
     st.write("**Tavily key:**", "✅ set (live search)" if os.environ.get("TAVILY_API_KEY") else "⚠️ not set (model-only)")
     n_queries = st.slider("Search queries", 3, 8, 5)
+    horizon_days = st.radio(
+        "Deadline window (⏰ Urgent)",
+        options=[30, 45, 60],
+        index=1,
+        format_func=lambda d: f"Next {d} days",
+        help="Venues with a deadline inside this window are flagged Urgent.",
+    )
 
 field = st.text_input(
     "Your research field",
@@ -66,7 +73,7 @@ if st.button("🚀 Scout opportunities", type="primary", use_container_width=Tru
 
     try:
         with st.spinner("Scouting…"):
-            result = ss.scout(field, n_queries=n_queries, progress=progress)
+            result = ss.scout(field, n_queries=n_queries, horizon_days=horizon_days, progress=progress)
     except Exception as e:
         st.error(f"Something went wrong: {e}")
         st.stop()
